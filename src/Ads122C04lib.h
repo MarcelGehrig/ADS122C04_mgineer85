@@ -281,7 +281,7 @@ public:
 
   /* *************************************************** PRIVATE *************************************************** */
 
-private: // ADS122C04 related stuff
+// private: // ADS122C04 related stuff
   int32_t _internal_calibration_offset = 0;
   int32_t getReadingRaw();                          // straight from adc
   int32_t getAverageReadingRaw(uint8_t number = 4); // straight from adc but averaged
