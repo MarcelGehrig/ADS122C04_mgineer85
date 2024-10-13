@@ -256,7 +256,6 @@ bool ADS122C04::waitUntilAvailable(uint16_t timeout_ms)
 // Returns 24-bit reading
 int32_t ADS122C04::getReadingRaw()
 {
-
   if (getBit(ADS122C04_CTRL1_CM, ADS122C04_CTRL1) == ADS122C04_CM_SINGLE_SHOT_MODE)
   {
     cmdStartSync();
@@ -267,6 +266,11 @@ int32_t ADS122C04::getReadingRaw()
     return INT_MAX;
   }
 
+  return getFinishedReadingRaw();
+}
+
+int32_t ADS122C04::getFinishedReadingRaw()
+{
   _i2cPort->beginTransmission(_deviceAddress);
   _i2cPort->write(ADS122C04_CMD_RDATA); // SEND COMMAND TO READ DATA
   if (_i2cPort->endTransmission() != 0)
@@ -304,6 +308,11 @@ int32_t ADS122C04::getAverageReadingRaw(uint8_t number)
 int32_t ADS122C04::getReading()
 {
   return getReadingRaw() - getInternalCalibrationOffset();
+}
+
+int32_t ADS122C04::getFinishedReading()
+{
+  return getFinishedReadingRaw() - getInternalCalibrationOffset();
 }
 
 int32_t ADS122C04::getAverageReading(uint8_t number)

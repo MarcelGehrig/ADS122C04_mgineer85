@@ -271,6 +271,7 @@ public: // ADS122C04 related functions
   bool available();                                                         // Returns true if data is available (either using DRDY pin or flag if no pin given)
   bool waitUntilAvailable(uint16_t timeout_ms = ADS122C04_TIMEOUT_DEFAULT); // blocks until timeout (return false) or data avail within timeout (return true)
   int32_t getReading();                                                     // reading from adc includes offset from internal calibration
+  int32_t getFinishedReading();                                             // reading from adc includes offset from internal calibration,  gets finished reading. starting and checking for finished must be done first
   int32_t getAverageReading(uint8_t number = 4);                            // reading from adc averaged and corrected offset from internal calibration
   bool internalCalibration(uint16_t time_ms = 200);                         // Call after mode changes, time_ms is over which time to average (accounts for different sps rates)
   bool sensorConnected();                                                   // Use burnout current to detect open connection (no sensor)
@@ -283,7 +284,8 @@ public:
 
 // private: // ADS122C04 related stuff
   int32_t _internal_calibration_offset = 0;
-  int32_t getReadingRaw();                          // straight from adc
+  int32_t getReadingRaw();                          // straight from adc, starts reading, waits and gets finished reading
+  int32_t getFinishedReadingRaw();                  // straight from adc, gets finished reading. starting and checking for finished must be done first
   int32_t getAverageReadingRaw(uint8_t number = 4); // straight from adc but averaged
   void setInternalCalibrationOffset(int32_t val);   // set internal offset value to compensate public getReading and getAverageReading for
   int32_t getInternalCalibrationOffset();           // get current internal offset value
