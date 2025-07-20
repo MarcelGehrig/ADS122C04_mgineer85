@@ -273,8 +273,8 @@ int32_t ADS122C04::getFinishedReadingRaw()
 {
   _i2cPort->beginTransmission(_deviceAddress);
   _i2cPort->write(ADS122C04_CMD_RDATA); // SEND COMMAND TO READ DATA
-  if (_i2cPort->endTransmission() != 0)
     return INT_MAX; // Sensor did not ACK
+  if (_i2cPort->endTransmission(false) != 0)
 
   _i2cPort->requestFrom((uint8_t)_deviceAddress, (uint8_t)3);
 
@@ -427,7 +427,7 @@ uint8_t ADS122C04::readRegister(uint8_t reg)
 {
   _i2cPort->beginTransmission(_deviceAddress);
   _i2cPort->write(ADS122C04_CMD_RREG | (reg << 2));
-  if (_i2cPort->endTransmission() != 0)
+  if (_i2cPort->endTransmission(false) != 0)
   {
     // log_e("readRegister failed, no ACK");
     return (-1); // Sensor did not ACK  //TODO: -1 cant return to uint8_t?
