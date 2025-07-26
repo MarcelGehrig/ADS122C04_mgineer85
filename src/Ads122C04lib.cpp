@@ -170,11 +170,17 @@ bool ADS122C04::setDataIntegrityCheck(ADS122C04_CRC_Values crc)
   value |= crc << ADS122C04_CTRL2_CRC; // Mask in new bits
   return (writeRegister(ADS122C04_CTRL2, value));
 }
+
 bool ADS122C04::setDataCounter(ADS122C04_DCNT_Values datacounter)
 {
-  return false; // TODO: not implemented yet, need to decode conversion result properly.
-  return setBit(ADS122C04_CTRL2_DCNT, ADS122C04_CTRL2, datacounter);
+//  return false; // TODO: not implemented yet, need to decode conversion result properly.
+  bool ret = setBit(ADS122C04_CTRL2_DCNT, ADS122C04_CTRL2, datacounter);
+  if (ret) {
+    datacounter_ = datacounter;
+  }
+  return ret;
 }
+
 bool ADS122C04::getDataReadyFlag()
 {
   return getBit(ADS122C04_CTRL2_DRDY, ADS122C04_CTRL2);
@@ -254,7 +260,7 @@ bool ADS122C04::waitUntilAvailable(uint16_t timeout_ms)
 }
 
 // Returns 24-bit reading
-int32_t ADS122C04::getReadingRaw()
+uint8_t ADS122C04::getReadingRaw(int32_t *value)
 {
   if (getBit(ADS122C04_CTRL1_CM, ADS122C04_CTRL1) == ADS122C04_CM_SINGLE_SHOT_MODE)
   {
@@ -263,61 +269,76 @@ int32_t ADS122C04::getReadingRaw()
 
   if (!waitUntilAvailable())
   {
-    return INT_MAX;
+    return UINT8_MAX;
   }
 
-  return getFinishedReadingRaw();
+  return getFinishedReadingRaw(value);
 }
 
-int32_t ADS122C04::getFinishedReadingRaw()
+uint8_t ADS122C04::getFinishedReadingRaw(int32_t *value)
 {
+  uint8_t datacount = 0;
+
   _i2cPort->beginTransmission(_deviceAddress);
   _i2cPort->write(ADS122C04_CMD_RDATA); // SEND COMMAND TO READ DATA
-    return INT_MAX; // Sensor did not ACK
   if (_i2cPort->endTransmission(false) != 0)
+    return UINT8_MAX; // Sensor did not ACK
 
-  _i2cPort->requestFrom((uint8_t)_deviceAddress, (uint8_t)3);
+  int count = 3 + (isDataCounterEnabled() ? 1 : 0);
+  _i2cPort->requestFrom((uint8_t)_deviceAddress, (uint8_t)count);
 
   if (_i2cPort->available())
   {
-    uint32_t valueRaw = (uint32_t)_i2cPort->read() << 16; // MSB
-    valueRaw |= (uint32_t)_i2cPort->read() << 8;          // MidSB
-    valueRaw |= (uint32_t)_i2cPort->read();               // LSB
+    if (isDataCounterEnabled()) {
+      datacount = _i2cPort->read();
+    }
+    uint32_t valueRaw = (uint32_t)_i2cPort->read() << 24; // MSB
+    valueRaw |= (uint32_t)_i2cPort->read() << 16;         // MidSB
+    valueRaw |= (uint32_t)_i2cPort->read() << 8;          // LSB
 
-    int32_t valueShifted = (int32_t)(valueRaw << 8);
-    int32_t value = (valueShifted >> 8);
+    int32_t valueShifted = (int32_t)valueRaw;
+    *value = (valueShifted >> 8);
 
-    return value;
+    return datacount;
   }
-  return INT_MAX;
+  return UINT8_MAX;
 }
 
-int32_t ADS122C04::getAverageReadingRaw(uint8_t number)
+uint8_t ADS122C04::getAverageReadingRaw(int32_t *value, uint8_t number)
 {
-
   int64_t total = 0; // warning: can overflow in theory!
+  int8_t datacount = 0;
 
   for (int i = 0; i < number; i++)
   {
-    total += getReadingRaw();
+    int32_t temp;
+    datacount = getReadingRaw(&temp);
+    total += temp;
   }
 
-  return total / number;
+  *value = total / number;
+  return datacount;
 }
 
-int32_t ADS122C04::getReading()
+uint8_t ADS122C04::getReading(int32_t *value)
 {
-  return getReadingRaw() - getInternalCalibrationOffset();
+  uint8_t ret = getReadingRaw(value);
+  (*value) -= getInternalCalibrationOffset();
+  return ret;
 }
 
-int32_t ADS122C04::getFinishedReading()
+uint8_t ADS122C04::getFinishedReading(int32_t *value)
 {
-  return getFinishedReadingRaw() - getInternalCalibrationOffset();
+  uint8_t ret = getFinishedReadingRaw(value);
+  (*value) -= getInternalCalibrationOffset();
+  return ret;
 }
 
-int32_t ADS122C04::getAverageReading(uint8_t number)
+uint8_t ADS122C04::getAverageReading(int32_t *value, uint8_t number)
 {
-  return getAverageReadingRaw(number) - getInternalCalibrationOffset();
+  uint8_t ret = getAverageReadingRaw(value, number);
+  (*value) -= getInternalCalibrationOffset();
+  return ret;
 }
 
 /// @brief Recommended to perform internal calibration after gain changed
@@ -327,7 +348,7 @@ bool ADS122C04::internalCalibration(uint16_t time_ms)
   // helps improving accuracy by removing any offset from internal circuitry
 
   // account for different sample rates
-  uint16_t samplesToRead = (uint16_t)(getDataRateRealSamples() * (time_ms / 1000.0));
+  uint16_t samplesToRead = (uint16_t)(getDataRateRealSamples() * time_ms) / 1000.0;
   if (samplesToRead < 4)
   {
     samplesToRead = 4;
@@ -339,9 +360,11 @@ bool ADS122C04::internalCalibration(uint16_t time_ms)
   setMux(ADS122C04_MUX_AINp_AINn_SHORTED_TO_AVDD_AVSS_DIV2);
   delay(10);
   // throw away to ensure stable results
-  getAverageReadingRaw();
+  int32_t value;
+  getAverageReadingRaw(&value, samplesToRead);
   // deviation from 0 is offset that is permanently removed from following readings
-  setInternalCalibrationOffset(getAverageReadingRaw(samplesToRead));
+  getAverageReadingRaw(&value, samplesToRead);
+  setInternalCalibrationOffset(value);
   // restore former mux config
   setMux(mux_before_calibration);
 
@@ -360,7 +383,8 @@ int32_t ADS122C04::getInternalCalibrationOffset()
 bool ADS122C04::sensorConnected()
 {
   setBurnoutCurrentSource(ADS122C04_BCS_CURRENT_SOURCE_ON);
-  int32_t reading = getReadingRaw();
+  int32_t reading;
+  getReadingRaw(&reading);
   setBurnoutCurrentSource(ADS122C04_BCS_CURRENT_SOURCE_OFF);
   if (reading >= 0x7FFFFF)
     return false;
